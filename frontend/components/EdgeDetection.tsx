@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect } from "react";
+import React, { useRef, useState, useEffect, Dispatch } from "react";
 import { View, Button, StyleSheet, Text } from "react-native";
 import {
   Camera,
@@ -12,7 +12,11 @@ import {
   htmlContent,
 } from "@/algorithm/edgeDetection";
 
-const EdgeDetectionComponent: React.FC = () => {
+export default function EdgeDetectionComponent({
+  setRunning,
+}: {
+  setRunning: Dispatch<React.SetStateAction<boolean>>;
+}) {
   const [permission, requestPermission] = useCameraPermissions();
   const [capturedUri, setCapturedUri] = useState<string | null>(null);
   const cameraRef = useRef<CameraView>(null);
@@ -52,13 +56,11 @@ const EdgeDetectionComponent: React.FC = () => {
   return (
     <View style={styles.container}>
       <CameraView style={styles.cameraContainer} ref={cameraRef}>
-        <Button title="Capture" onPress={handleCapture} />
         <WebView
           ref={webViewRef}
           originWhitelist={["*"]}
           source={{ html: htmlContent }}
           injectedJavaScript={generateInjectedJavaScript()}
-          style={styles.webviewContainer}
           onError={(syntheticEvent) => {
             const { nativeEvent } = syntheticEvent;
             console.warn("WebView error:", nativeEvent);
@@ -67,23 +69,19 @@ const EdgeDetectionComponent: React.FC = () => {
       </CameraView>
     </View>
   );
-};
+}
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#000",
+    backgroundColor: "#FFF",
   },
   cameraContainer: {
-    flex: 1,
-    minHeight: 600, // Ensures minimum height for camera view
+    alignItems: "center",
+    justifyContent: "center",
   },
   camera: {
     flex: 1,
-  },
-  webviewContainer: {
-    flex: 1,
-    minHeight: 600, // Ensures minimum height for webview
   },
   webview: {
     flex: 1,
@@ -106,5 +104,3 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
 });
-
-export default EdgeDetectionComponent;

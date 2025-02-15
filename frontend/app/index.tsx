@@ -8,21 +8,23 @@ import { ThemedView } from "@/components/ThemedView";
 import EdgeDetectionComponent from "@/components/EdgeDetection";
 import AnimatedCircle from "@/components/AnimatedCircle";
 import MenuButton from "@/components/MenuButton";
+import { useState } from "react";
 
 export default function HomeScreen() {
+  const [running, setRunning] = useState();
   return (
-    <View
-      style={{
-        flex: 1,
-        justifyContent: "center",
-        alignItems: "center",
-        paddingBottom: 20,
-      }}
-    >
-      <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
-        <AnimatedCircle />
+    <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
+      <View
+        style={{
+          flex: 1,
+          justifyContent: "center",
+          alignItems: "center",
+          paddingBottom: 20,
+          maxHeight: 200,
+        }}
+      >
+        <EdgeDetectionComponent setRunning={setRunning} />
       </View>
-      <MenuButton />
     </View>
   );
 }
