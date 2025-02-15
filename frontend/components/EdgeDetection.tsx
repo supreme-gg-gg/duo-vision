@@ -1,62 +1,110 @@
 import React, { useRef, useState, useEffect } from "react";
 import { View, Button, StyleSheet, Text } from "react-native";
-import { Camera } from "expo-camera";
+import {
+  Camera,
+  useCameraPermissions,
+  CameraView,
+  CameraType,
+} from "expo-camera";
 import { WebView } from "react-native-webview";
-import { htmlContent } from "@/algorithm/edgeDetection";
+import {
+  generateInjectedJavaScript,
+  htmlContent,
+} from "@/algorithm/edgeDetection";
 
-export default function EdgeDetectionComponent() {
-  const [hasPermission, setHasPermission] = useState<boolean | null>(null);
+const EdgeDetectionComponent: React.FC = () => {
+  const [permission, requestPermission] = useCameraPermissions();
   const [capturedUri, setCapturedUri] = useState<string | null>(null);
-  const cameraRef = useRef<Camera>(null);
+  const cameraRef = useRef<CameraView>(null);
   const webViewRef = useRef<WebView>(null);
-
-  useEffect(() => {
-    (async () => {
-      const { status } = await Camera.requestCameraPermissionsAsync();
-      setHasPermission(status === "granted");
-    })();
-  }, []);
 
   const handleCapture = async () => {
     if (cameraRef.current) {
-      const photo = await cameraRef.current.takePictureAsync({ base64: true });
-      setCapturedUri(photo.uri);
-      // Send the captured image URI to the WebView to process.
-      if (webViewRef.current && photo.uri) {
-        webViewRef.current.postMessage(photo.uri);
+      const photo = await cameraRef.current.takePictureAsync({
+        base64: true,
+        quality: 0.7,
+      });
+      if (photo?.uri) {
+        setCapturedUri(photo.uri);
+        if (webViewRef.current) {
+          webViewRef.current.postMessage(photo.uri);
+        }
       }
     }
   };
 
-  if (hasPermission === null) {
+  if (!permission) {
     return <View />;
   }
 
-  if (hasPermission === false) {
+  if (!permission.granted) {
+    // Camera permissions are not granted yet.
     return (
-      <View style={styles.center}>
-        <Text>No camera permission granted.</Text>
+      <View style={styles.container}>
+        <Text style={styles.message}>
+          We need your permission to show the camera
+        </Text>
+        <Button onPress={requestPermission} title="grant permission" />
       </View>
     );
   }
 
   return (
     <View style={styles.container}>
-      <Camera style={styles.camera} ref={cameraRef} />
-      <Button title="Capture" onPress={handleCapture} />
-      <WebView
-        ref={webViewRef}
-        originWhitelist={["*"]}
-        source={{ html: htmlContent }}
-        style={styles.webview}
-      />
+      <CameraView style={styles.cameraContainer} ref={cameraRef}>
+        <Button title="Capture" onPress={handleCapture} />
+        <WebView
+          ref={webViewRef}
+          originWhitelist={["*"]}
+          source={{ html: htmlContent }}
+          injectedJavaScript={generateInjectedJavaScript()}
+          style={styles.webviewContainer}
+          onError={(syntheticEvent) => {
+            const { nativeEvent } = syntheticEvent;
+            console.warn("WebView error:", nativeEvent);
+          }}
+        />
+      </CameraView>
     </View>
   );
-}
+};
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  camera: { flex: 1 },
-  webview: { flex: 1 },
-  center: { flex: 1, justifyContent: "center", alignItems: "center" },
+  container: {
+    flex: 1,
+    backgroundColor: "#000",
+  },
+  cameraContainer: {
+    flex: 1,
+    minHeight: 600, // Ensures minimum height for camera view
+  },
+  camera: {
+    flex: 1,
+  },
+  webviewContainer: {
+    flex: 1,
+    minHeight: 600, // Ensures minimum height for webview
+  },
+  webview: {
+    flex: 1,
+  },
+  buttonContainer: {
+    flex: 1,
+    backgroundColor: "transparent",
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "flex-end",
+    marginBottom: 20,
+  },
+  message: {
+    textAlign: "center",
+    paddingBottom: 10,
+  },
+  center: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
 });
+
+export default EdgeDetectionComponent;
