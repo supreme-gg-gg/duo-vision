@@ -83,7 +83,13 @@ export const generateInjectedJavaScript = () => `
   ${applySobel.toString()}
   ${detectBoundingBox.toString()}
 
-  function processImage(imageUrl) {
+  let isTracking = false;
+  let processingFrame = false;
+
+  function processImage(data) {
+    const { uri, isTracking: tracking } = JSON.parse(data);
+    isTracking = tracking;
+
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
     const img = new Image();
@@ -94,24 +100,40 @@ export const generateInjectedJavaScript = () => `
       canvas.height = img.height;
       ctx.drawImage(img, 0, 0);
       
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      const gray = grayscale(imageData);
-      const sobelData = applySobel(gray, canvas.width, canvas.height);
-      const boundingBox = detectBoundingBox(sobelData, canvas.width, canvas.height, 100);
-      
-      // Draw the bounding box
-      ctx.strokeStyle = 'red';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.moveTo(boundingBox.topLeft.x, boundingBox.topLeft.y);
-      ctx.lineTo(boundingBox.topRight.x, boundingBox.topRight.y);
-      ctx.lineTo(boundingBox.bottomRight.x, boundingBox.bottomRight.y);
-      ctx.lineTo(boundingBox.bottomLeft.x, boundingBox.bottomLeft.y);
-      ctx.closePath();
-      ctx.stroke();
+      if (isTracking) {
+        processFrame(ctx, canvas.width, canvas.height);
+      }
     };
     
-    img.src = imageUrl;
+    img.src = uri;
+  }
+
+  function processFrame(ctx, width, height) {
+    if (!isTracking || processingFrame) return;
+    processingFrame = true;
+
+    const imageData = ctx.getImageData(0, 0, width, height);
+    const gray = grayscale(imageData);
+    const sobelData = applySobel(gray, width, height);
+    const box = detectBoundingBox(sobelData, width, height, 100);
+
+    // Convert bounding box to simplified format
+    const boundingBox = {
+      x: box.topLeft.x,
+      y: box.topLeft.y,
+      width: box.topRight.x - box.topLeft.x,
+      height: box.bottomLeft.y - box.topLeft.y
+    };
+
+    // Send results back to React Native
+    window.ReactNativeWebView.postMessage(JSON.stringify({ boundingBox }));
+    
+    processingFrame = false;
+    
+    // Continue processing if still tracking
+    if (isTracking) {
+      requestAnimationFrame(() => processFrame(ctx, width, height));
+    }
   }
 
   // Listen for messages from React Native
@@ -123,15 +145,14 @@ export const generateInjectedJavaScript = () => `
   });
 `;
 
-// Minimal HTML template
 export const htmlContent = `
 <!DOCTYPE html>
 <html>
   <head>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <style>
-      body, html { margin:0; padding:0; }
-      canvas { display: block; }
+      body, html { margin:0; padding:0; overflow: hidden; }
+      canvas { display: none; }
     </style>
   </head>
   <body>

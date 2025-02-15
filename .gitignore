@@ -224,3 +224,7 @@ public/
 
 # Optional stylelint cache
 .stylelintcache
+
+ios/
+
+android/
