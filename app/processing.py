@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 from typing import Tuple, Optional
 
-def preprocess_image(image: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+def preprocess(image: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
     """
     Color-based preprocessing to detect white/light colored paper
     """
@@ -175,13 +175,13 @@ def show_debug_window(name: str, image: np.ndarray, wait: bool = False) -> None:
     if wait:
         cv2.waitKey(0)
 
-def process_notebook_image(image: np.ndarray, debug: bool = True) -> Tuple[np.ndarray, np.ndarray, Tuple[int, int], float]:
+def process_image(image: np.ndarray, debug: bool = True) -> Tuple[np.ndarray, np.ndarray, Tuple[int, int], float]:
     """
     Runs through the complete pipeline with optional debug visualization using threshold-based segmentation.
     """
     
     # Grayscale and threshold
-    gray, thresh = preprocess_image(image)
+    gray, thresh = preprocess(image)
     if debug:
         show_debug_window("3. Threshold", thresh)
     
@@ -197,28 +197,57 @@ def process_notebook_image(image: np.ndarray, debug: bool = True) -> Tuple[np.nd
     
     # Calculate center using the rotated tight box contour
     center = calculate_center_using_warp(warped, M)
-    
-    if debug:
-        result = image.copy()
-        draw_bounding_box(result, contour)
-        cv2.circle(result, center, 10, (0, 0, 255), -1)
-        cv2.putText(result, f"Center: {center}", (10, 30), 
-                    cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-        show_debug_window("6. Final Result", result, wait=True)
+
+    result = image.copy()
+    cv2.drawContours(result, [contour], -1, (0, 255, 0), 2)
+    cv2.circle(result, center, 10, (0, 0, 255), -1)
+    cv2.putText(result, f"Center: {center}", (10, 30),
+                cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+    show_debug_window("Final Result", result, wait=True)
 
     return contour, warped, center, angle
 
+def capture_continuous(camera_index: int = 0, process_frame=None) -> None:
+    """
+    Continuously capture and process frames from the camera.
+    process_frame: optional callback function to process each frame
+    """
+    cap = cv2.VideoCapture(camera_index)
+    if not cap.isOpened():
+        raise RuntimeError("Cannot open camera")
+
+    try:
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                continue
+
+            if process_frame:
+                try:
+                    contour, warped, center, angle = process_frame(frame)
+                    # Draw results on frame
+                    cv2.drawContours(frame, [contour], -1, (0, 255, 0), 2)
+                    cv2.circle(frame, center, 10, (0, 0, 255), -1)
+                    cv2.putText(frame, f"Angle: {angle:.1f}", (10, 30), 
+                              cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+                    # Show warped view alongside main view
+                    cv2.imshow("Warped View", warped)
+                except Exception as e:
+                    print(f"Frame processing error: {e}")
+
+            cv2.imshow("Tracking (Press 'q' to quit)", frame)
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
+
+    finally:
+        cap.release()
+        cv2.destroyAllWindows()
+
 if __name__ == "__main__":
     try:
-        image = capture_image()
-        contour, warped, center, angle = process_notebook_image(
-            image,
-            debug=True  # Enable debug visualization
+        # Replace single capture with continuous tracking
+        capture_continuous(
+            process_frame=lambda frame: process_image(frame, debug=False)
         )
-        
-        # Close all windows when done
-        cv2.waitKey(0)
-        cv2.destroyAllWindows()
-        
     except Exception as e:
         print("Error:", e)

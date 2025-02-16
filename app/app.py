@@ -1,53 +1,43 @@
-import asyncio
-import numpy as np
+import random, time
+from bluetooth import read_frame, send_servo_command
+from processing import process_image
+import serial
 import cv2
-import streamlit as st
-from bleak import BleakClient
+import numpy as np
 
-# 🟢 Replace this with your ESP32 BLE MAC Address
-ESP32_MAC = "XX:XX:XX:XX:XX:XX"  # e.g., "A4:C1:38:B2:12:34"
-VIDEO_UUID = "0000xxxx-0000-1000-8000-00805f9b34fb"  # Replace with your ESP32 BLE characteristic UUID
+SERIAL_PORT = "/dev/cu.ESP32_CAM_BT"
+BAUD_RATE = 115200
 
-# Global variable to stop streaming
-streaming = False
+def main_pipeline():
 
-# Async function to read BLE video stream
-async def receive_video():
-    global streaming
-    streaming = True
+    ser = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=10)
 
-    async with BleakClient(ESP32_MAC) as client:
-        if not await client.is_connected():
-            st.error("Failed to connect to ESP32!")
-            return
+    while True:
+        # 1. Receive image frame from bluetooth
+        frame_data = read_frame(ser)  # returns raw bytes
+        if frame_data is None:
+            time.sleep(0.1)
+            continue
+        np_arr = np.frombuffer(frame_data, dtype=np.uint8)
+        frame = cv2.imdecode(np_arr, cv2.IMREAD_COLOR)
+        if frame is None:
+            print("Failed to decode frame")
+            continue
+        cv2.imshow("Input frame", frame)
 
-        st.success("Connected to ESP32! Streaming video...")
-        frame_placeholder = st.empty()
+        try:
+            # 2. Process frame to get paper center and angle
+            _, _, center, paper_angle = process_image(frame, debug=False)
+            print(f"Processed frame: Center={center}, Paper angle={paper_angle:.2f}")
+        except Exception as e:
+            print("Processing error:", e)
+            continue
 
-        while streaming:
-            try:
-                frame_data = await client.read_gatt_char(VIDEO_UUID)
-                
-                # Convert byte data to numpy array
-                frame_bytes = np.frombuffer(frame_data, dtype=np.uint8)
-                img = cv2.imdecode(frame_bytes, cv2.IMREAD_COLOR)
+        # 3. Send back a random servo command
+        random_angle = random.randint(0, 180)
+        send_servo_command(ser, random_angle)
+        time.sleep(0.1)
 
-                if img is not None:
-                    frame_placeholder.image(img, channels="BGR")
+if __name__ == "__main__":
+    main_pipeline()
 
-            except Exception as e:
-                st.error(f"Error: {e}")
-                streaming = False
-
-# UI - Streamlit Layout
-st.title("📡 ESP32 BLE Video Stream")
-st.write("This app connects to an ESP32 BLE device and streams video in real-time.")
-
-# Button to start streaming
-if st.button("Start Streaming"):
-    asyncio.run(receive_video())
-
-# Button to stop streaming
-if st.button("Stop Streaming"):
-    streaming = False
-    st.warning("Streaming Stopped!")
