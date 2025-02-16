@@ -1,3 +1,5 @@
+# THIS FILE IS USED ONLY FOR TESTING
+
 import serial
 import struct
 import time
