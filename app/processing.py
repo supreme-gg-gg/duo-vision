@@ -200,7 +200,7 @@ def process_notebook_image(image: np.ndarray, debug: bool = True) -> Tuple[np.nd
     
     if debug:
         result = image.copy()
-        draw_bounding_box(result, contour)
+        cv2.drawContours(result, [contour], -1, (0, 255, 0), 2)
         cv2.circle(result, center, 10, (0, 0, 255), -1)
         cv2.putText(result, f"Center: {center}", (10, 30), 
                     cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
@@ -211,6 +211,8 @@ def process_notebook_image(image: np.ndarray, debug: bool = True) -> Tuple[np.nd
 if __name__ == "__main__":
     try:
         image = capture_image()
+        
+        # TODO: the warped view can be rendered
         contour, warped, center, angle = process_notebook_image(
             image,
             debug=True  # Enable debug visualization
