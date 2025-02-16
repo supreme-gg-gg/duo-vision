@@ -12,7 +12,7 @@ import EdgeDetectionComponent from "@/components/EdgeDetection";
 // import DeviceModal from "@/components/DeviceConnectionModel";
 // import useBLE from "@/components/useBLE";
 
-export default function HomeScreen() {
+export default function HomeScreenOld() {
   // const {
   //   allDevices,
   //   connectedDevice,
