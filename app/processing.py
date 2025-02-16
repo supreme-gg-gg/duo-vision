@@ -208,19 +208,47 @@ def process_notebook_image(image: np.ndarray, debug: bool = True) -> Tuple[np.nd
 
     return contour, warped, center, angle
 
+def capture_continuous(camera_index: int = 0, process_frame=None) -> None:
+    """
+    Continuously capture and process frames from the camera.
+    process_frame: optional callback function to process each frame
+    """
+    cap = cv2.VideoCapture(camera_index)
+    if not cap.isOpened():
+        raise RuntimeError("Cannot open camera")
+
+    try:
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                continue
+
+            if process_frame:
+                try:
+                    contour, warped, center, angle = process_frame(frame)
+                    # Draw results on frame
+                    cv2.drawContours(frame, [contour], -1, (0, 255, 0), 2)
+                    cv2.circle(frame, center, 10, (0, 0, 255), -1)
+                    cv2.putText(frame, f"Angle: {angle:.1f}", (10, 30), 
+                              cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+                    # Show warped view alongside main view
+                    cv2.imshow("Warped View", warped)
+                except Exception as e:
+                    print(f"Frame processing error: {e}")
+
+            cv2.imshow("Tracking (Press 'q' to quit)", frame)
+            if cv2.waitKey(1) & 0xFF == ord('q'):
+                break
+
+    finally:
+        cap.release()
+        cv2.destroyAllWindows()
+
 if __name__ == "__main__":
     try:
-        image = capture_image()
-        
-        # TODO: the warped view can be rendered
-        contour, warped, center, angle = process_notebook_image(
-            image,
-            debug=True  # Enable debug visualization
+        # Replace single capture with continuous tracking
+        capture_continuous(
+            process_frame=lambda frame: process_notebook_image(frame, debug=False)
         )
-        
-        # Close all windows when done
-        cv2.waitKey(0)
-        cv2.destroyAllWindows()
-        
     except Exception as e:
         print("Error:", e)

@@ -7,7 +7,7 @@ import numpy as np
 import threading
 
 # Adjust the serial port and baud rate as needed.
-SERIAL_PORT = '/dev/rfcomm0'
+SERIAL_PORT = '/dev/tty.ESP32_CAM_BT'
 BAUD_RATE = 115200
 
 # Global flag to signal exit
@@ -93,13 +93,13 @@ def servo_input_thread(ser):
     global exit_flag
     
     # Replace the static SERIAL_PORT with dynamic selection
-    selected_port = select_port()
-    print(f"Attempting to connect to {selected_port}...")
+    # selected_port = select_port()
+    # print(f"Attempting to connect to {selected_port}...")
     
     try:
-        ser = serial.Serial(selected_port, BAUD_RATE, timeout=10)
+        ser = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=10)
     except Exception as e:
-        print(f"Failed to open {selected_port}: {e}")
+        print(f"Failed to open port: {e}")
         return
 
     while not exit_flag:
@@ -118,6 +118,11 @@ def servo_input_thread(ser):
 
 def main():
     global exit_flag
+
+    # Replace the static SERIAL_PORT with dynamic selection
+    # selected_port = select_port()
+    # print(f"Attempting to connect to {selected_port}...")
+
     try:
         ser = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=10)
     except Exception as e:
