@@ -25,7 +25,7 @@ def receive_images(sock):
         # First, receive the 4-byte frame size.
         size_data = recvall(sock, 4)
         if not size_data:
-            print("Failed to receive frame size. Exiting image receiver.")
+            print("Failed to receive frame size. Exiting image receiver."),
             break
         frame_size = struct.unpack("<I", size_data)[0]
         
