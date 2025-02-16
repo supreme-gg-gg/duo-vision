@@ -2,7 +2,7 @@ import cv2
 import numpy as np
 from typing import Tuple, Optional
 
-def preprocess_image(image: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+def preprocess(image: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
     """
     Color-based preprocessing to detect white/light colored paper
     """
@@ -175,13 +175,13 @@ def show_debug_window(name: str, image: np.ndarray, wait: bool = False) -> None:
     if wait:
         cv2.waitKey(0)
 
-def process_notebook_image(image: np.ndarray, debug: bool = True) -> Tuple[np.ndarray, np.ndarray, Tuple[int, int], float]:
+def process_image(image: np.ndarray, debug: bool = True) -> Tuple[np.ndarray, np.ndarray, Tuple[int, int], float]:
     """
     Runs through the complete pipeline with optional debug visualization using threshold-based segmentation.
     """
     
     # Grayscale and threshold
-    gray, thresh = preprocess_image(image)
+    gray, thresh = preprocess(image)
     if debug:
         show_debug_window("3. Threshold", thresh)
     
@@ -197,14 +197,13 @@ def process_notebook_image(image: np.ndarray, debug: bool = True) -> Tuple[np.nd
     
     # Calculate center using the rotated tight box contour
     center = calculate_center_using_warp(warped, M)
-    
-    if debug:
-        result = image.copy()
-        cv2.drawContours(result, [contour], -1, (0, 255, 0), 2)
-        cv2.circle(result, center, 10, (0, 0, 255), -1)
-        cv2.putText(result, f"Center: {center}", (10, 30), 
-                    cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-        show_debug_window("6. Final Result", result, wait=True)
+
+    result = image.copy()
+    cv2.drawContours(result, [contour], -1, (0, 255, 0), 2)
+    cv2.circle(result, center, 10, (0, 0, 255), -1)
+    cv2.putText(result, f"Center: {center}", (10, 30),
+                cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+    show_debug_window("Final Result", result, wait=True)
 
     return contour, warped, center, angle
 
@@ -248,7 +247,7 @@ if __name__ == "__main__":
     try:
         # Replace single capture with continuous tracking
         capture_continuous(
-            process_frame=lambda frame: process_notebook_image(frame, debug=False)
+            process_frame=lambda frame: process_image(frame, debug=False)
         )
     except Exception as e:
         print("Error:", e)
