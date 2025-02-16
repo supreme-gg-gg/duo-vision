@@ -1,5 +1,6 @@
 import random, time
 from bluetooth import read_frame, send_servo_command
+from controller import Controller
 from processing import process_image
 import serial
 import cv2
@@ -9,6 +10,8 @@ SERIAL_PORT = "/dev/cu.ESP32_CAM_BT"
 BAUD_RATE = 115200
 
 def main_pipeline():
+
+    controller = Controller() 
 
     ser = serial.Serial(SERIAL_PORT, BAUD_RATE, timeout=10)
 
@@ -34,9 +37,10 @@ def main_pipeline():
             continue
 
         # 3. Send back a random servo command
-        random_angle = random.randint(0, 180)
-        send_servo_command(ser, random_angle)
+        a1, a2 = controller.get_angle(center)
+        send_servo_command(ser, a1, a2)
         time.sleep(0.1)
+
 
 if __name__ == "__main__":
     main_pipeline()
