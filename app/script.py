@@ -1,4 +1,5 @@
 import serial
+import serial.tools.list_ports
 import struct
 import time
 import cv2
@@ -11,6 +12,44 @@ BAUD_RATE = 115200
 
 # Global flag to signal exit
 exit_flag = False
+
+def find_bluetooth_port():
+    """Find available Bluetooth serial ports"""
+    ports = list(serial.tools.list_ports.comports())
+    bluetooth_ports = []
+    
+    for port in ports:
+        if any(bt_id in port.description.lower() for bt_id in ['bluetooth', 'rfcomm', 'bt']):
+            bluetooth_ports.append(port.device)
+        # Also check for ESP32 specific identifiers
+        elif any(esp_id in port.description for esp_id in ['CP210X', 'CH340', 'FTDI']):
+            bluetooth_ports.append(port.device)
+    
+    return bluetooth_ports
+
+def select_port():
+    """Let user select the port"""
+    bluetooth_ports = find_bluetooth_port()
+    
+    if not bluetooth_ports:
+        print("No Bluetooth ports found. Available ports:")
+        for port in serial.tools.list_ports.comports():
+            print(f"- {port.device}: {port.description}")
+        return input("Enter port manually: ")
+    
+    print("\nAvailable Bluetooth ports:")
+    for i, port in enumerate(bluetooth_ports):
+        print(f"{i+1}: {port}")
+    
+    while True:
+        try:
+            choice = int(input("\nSelect port number (or 0 to enter manually): "))
+            if choice == 0:
+                return input("Enter port manually: ")
+            if 1 <= choice <= len(bluetooth_ports):
+                return bluetooth_ports[choice-1]
+        except ValueError:
+            print("Please enter a valid number")
 
 def send_servo_command(ser, angle):
     """Send a servo command to set the servo to the given angle on GPIO14."""
@@ -52,6 +91,17 @@ def read_frame(ser):
 def servo_input_thread(ser):
     """Thread that reads user input from the terminal and sends servo commands."""
     global exit_flag
+    
+    # Replace the static SERIAL_PORT with dynamic selection
+    selected_port = select_port()
+    print(f"Attempting to connect to {selected_port}...")
+    
+    try:
+        ser = serial.Serial(selected_port, BAUD_RATE, timeout=10)
+    except Exception as e:
+        print(f"Failed to open {selected_port}: {e}")
+        return
+
     while not exit_flag:
         user_input = input("Enter servo angle (0-180) or 'q' to quit: ")
         if user_input.lower() == 'q':
