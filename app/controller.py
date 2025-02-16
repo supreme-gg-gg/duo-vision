@@ -1,7 +1,7 @@
 import time
 import numpy as np
 import cv2
-from processing import process_notebook_image  # use functions from processing.py
+from processing import process_image  # use functions from processing.py
 
 # placeholder for receiving frame from Bluetooth SPP
 def get_next_frame() -> np.ndarray:
