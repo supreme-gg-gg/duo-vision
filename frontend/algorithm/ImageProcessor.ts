@@ -1,3 +1,7 @@
+import { toByteArray } from "base64-js";
+import { Image } from "react-native";
+import Canvas from "react-native-canvas";
+
 interface Point {
   x: number;
   y: number;
@@ -10,22 +14,46 @@ interface BoundingBox {
   bottomLeft: Point;
 }
 
-export function grayscale(imageData: ImageData): Uint8ClampedArray {
-  const gray = new Uint8ClampedArray(imageData.width * imageData.height);
-  for (let i = 0; i < imageData.data.length; i += 4) {
-    const avg =
-      (imageData.data[i] + imageData.data[i + 1] + imageData.data[i + 2]) / 3;
-    gray[i / 4] = avg;
-  }
-  return gray;
-}
+// function base64Conversion(base64: string): Uint8ClampedArray {
+//   const byteArray = toByteArray(base64); // Converts base64 to Uint8Array
+//   return new Uint8ClampedArray(byteArray.buffer); // Convert to Uint8ClampedArray
+// }
 
-export function applySobel(
+// const base64ToUint8ClampedArray = (base64: string): Uint8ClampedArray => {
+//   const binaryString = atob(base64); // Decode base64 string
+//   const len = binaryString.length;
+//   const bytes = new Uint8Array(len);
+
+//   for (let i = 0; i < len; i++) {
+//     bytes[i] = binaryString.charCodeAt(i);
+//   }
+
+//   return new Uint8ClampedArray(bytes.buffer);
+// };
+
+const toGrayscale = (canvas: Canvas): Uint8ClampedArray => {
+  const ctx = canvas.getContext("2d");
+  const { width, height } = canvas;
+  const imageData = ctx.getImageData(0, 0, width, height);
+  const data = imageData.data;
+  const grayscale = new Uint8ClampedArray(width * height);
+
+  for (let i = 0; i < data.length; i += 4) {
+    const r = data[i];
+    const g = data[i + 1];
+    const b = data[i + 2];
+    grayscale[i / 4] = Math.round(0.299 * r + 0.587 * g + 0.114 * b);
+  }
+
+  return grayscale;
+};
+
+function applySobel(
   gray: Uint8ClampedArray,
   width: number,
   height: number
 ): Float32Array {
-  const G = new Float32Array(width * height);
+  const G = new Float32Array(gray.length);
   const kernelX = [-1, 0, 1, -2, 0, 2, -1, 0, 1];
   const kernelY = [-1, -2, -1, 0, 0, 0, 1, 2, 1];
 
@@ -48,7 +76,7 @@ export function applySobel(
   return G;
 }
 
-export function detectBoundingBox(
+function detectBoundingBox(
   sobelData: Float32Array,
   width: number,
   height: number,
@@ -77,86 +105,22 @@ export function detectBoundingBox(
   };
 }
 
-// Generate the JavaScript code to be injected into WebView
-export const generateInjectedJavaScript = () => `
-  ${grayscale.toString()}
-  ${applySobel.toString()}
-  ${detectBoundingBox.toString()}
-
-  let isTracking = false;
-  let processingFrame = false;
-
-  function processImage(data) {
-    const { uri, isTracking: tracking } = JSON.parse(data);
-    isTracking = tracking;
-
-    const canvas = document.getElementById('canvas');
-    const ctx = canvas.getContext('2d');
-    const img = new Image();
-    img.crossOrigin = "Anonymous";
-    
-    img.onload = function() {
-      canvas.width = img.width;
-      canvas.height = img.height;
-      ctx.drawImage(img, 0, 0);
-      
-      if (isTracking) {
-        processFrame(ctx, canvas.width, canvas.height);
-      }
-    };
-    
-    img.src = uri;
-  }
-
-  function processFrame(ctx, width, height) {
-    if (!isTracking || processingFrame) return;
-    processingFrame = true;
-
-    const imageData = ctx.getImageData(0, 0, width, height);
-    const gray = grayscale(imageData);
+export async function processFrame(
+  canvas: Canvas,
+  width: number,
+  height: number
+): Promise<BoundingBox> {
+  try {
+    const gray = toGrayscale(canvas);
     const sobelData = applySobel(gray, width, height);
-    const box = detectBoundingBox(sobelData, width, height, 100);
-
-    // Convert bounding box to simplified format
-    const boundingBox = {
-      x: box.topLeft.x,
-      y: box.topLeft.y,
-      width: box.topRight.x - box.topLeft.x,
-      height: box.bottomLeft.y - box.topLeft.y
+    return detectBoundingBox(sobelData, width, height, 100);
+  } catch (error) {
+    console.error("Error processing frame:", error);
+    return {
+      topLeft: { x: 0, y: 0 },
+      topRight: { x: 0, y: 0 },
+      bottomRight: { x: 0, y: 0 },
+      bottomLeft: { x: 0, y: 0 },
     };
-
-    // Send results back to React Native
-    window.ReactNativeWebView.postMessage(JSON.stringify({ boundingBox }));
-    
-    processingFrame = false;
-    
-    // Continue processing if still tracking
-    if (isTracking) {
-      requestAnimationFrame(() => processFrame(ctx, width, height));
-    }
   }
-
-  // Listen for messages from React Native
-  document.addEventListener("message", function(event) {
-    processImage(event.data);
-  });
-  window.addEventListener("message", function(event) {
-    processImage(event.data);
-  });
-`;
-
-export const htmlContent = `
-<!DOCTYPE html>
-<html>
-  <head>
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <style>
-      body, html { margin:0; padding:0; overflow: hidden; }
-      canvas { display: none; }
-    </style>
-  </head>
-  <body>
-    <canvas id="canvas"></canvas>
-  </body>
-</html>
-`;
+}

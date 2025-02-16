@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Image, StyleSheet, Platform } from "react-native";
 
-import { SafeAreaView, Text, TouchableOpacity, View } from "react-native";
+// import { SafeAreaView, Text, TouchableOpacity, View } from "react-native";
 
 import { HelloWave } from "@/components/HelloWave";
 import ParallaxScrollView from "@/components/ParallaxScrollView";
@@ -9,8 +9,8 @@ import { ThemedText } from "@/components/ThemedText";
 import { ThemedView } from "@/components/ThemedView";
 // import CameraDisplay from "@/components/CameraDisplay";
 import EdgeDetectionComponent from "@/components/EdgeDetection";
-import DeviceModal from "@/components/DeviceConnectionModel";
-import useBLE from "@/components/useBLE";
+// import DeviceModal from "@/components/DeviceConnectionModel";
+// import useBLE from "@/components/useBLE";
 
 export default function HomeScreen() {
   // const {
