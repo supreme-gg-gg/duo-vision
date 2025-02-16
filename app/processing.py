@@ -4,12 +4,25 @@ from typing import Tuple, Optional
 
 def preprocess_image(image: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
     """
-    Convert image to grayscale and apply thresholding (Otsu).
+    Color-based preprocessing to detect white/light colored paper
     """
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    # Otsu thresholding: returns binary image
-    _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-    return gray, thresh
+    # Convert to HSV color space
+    hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+    
+    # Define range for white/light colored paper
+    # Low saturation, high value
+    lower = np.array([0, 0, 180])  # Very low saturation, high brightness
+    upper = np.array([180, 30, 255])  # Any hue, low saturation, high brightness
+    
+    # Create mask for white/light regions
+    mask = cv2.inRange(hsv, lower, upper)
+    
+    # Clean up the mask
+    kernel = np.ones((5,5), np.uint8)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+    
+    return cv2.cvtColor(image, cv2.COLOR_BGR2GRAY), mask
 
 def detect_edges(image: np.ndarray, low_threshold: int = 50, high_threshold: int = 150) -> np.ndarray:
     """
@@ -33,15 +46,18 @@ def order_points(pts: np.ndarray) -> np.ndarray:
     rect[3] = pts[np.argmax(diff)]
     return rect
 
-def transform_perspective(image: np.ndarray, contour: np.ndarray) -> np.ndarray:
+def transform_perspective(image: np.ndarray, contour: np.ndarray) -> Tuple[np.ndarray, np.ndarray, float]:
     """
-    Given a quadrilateral contour, perform a perspective transform to rectify the notebook.
-    Additionally, apply rotation correction if the notebook is not captured parallel.
+    Perform perspective transform and return warped image, the transformation matrix, and the rotation angle.
     """
-    rect = order_points(contour)
+    pts = contour.reshape(-1, 2)
+    if len(pts) != 4:
+        x, y, w, h = cv2.boundingRect(contour)
+        pts = np.array([[x, y], [x+w, y], [x+w, y+h], [x, y+h]], dtype="float32")
+    
+    rect = order_points(pts)
     (tl, tr, br, bl) = rect
 
-    # Compute widths and heights for the new image:
     widthA = np.linalg.norm(br - bl)
     widthB = np.linalg.norm(tr - tl)
     maxWidth = int(max(widthA, widthB))
@@ -60,22 +76,61 @@ def transform_perspective(image: np.ndarray, contour: np.ndarray) -> np.ndarray:
     M = cv2.getPerspectiveTransform(rect, dst)
     warped = cv2.warpPerspective(image, M, (maxWidth, maxHeight))
     
-    # Calculate the angle of the top edge relative to horizontal
-    angle = np.degrees(np.arctan2(tr[1] - tl[1], tr[0] - tl[0]))
-    if abs(angle) > 1:  # Apply rotation only if the angle is significant
+    angle = np.degrees(np.arctan2(tr[1]-tl[1], tr[0]-tl[0]))
+    if abs(angle) > 1:
         center_pt = (maxWidth // 2, maxHeight // 2)
         R = cv2.getRotationMatrix2D(center_pt, angle, 1.0)
         warped = cv2.warpAffine(warped, R, (maxWidth, maxHeight))
-    return warped
+    return warped, M, angle
 
-def calculate_center_and_angle(_unused: np.ndarray, contour: np.ndarray, camera_width: Optional[int] = None) -> Tuple[Tuple[int, int], float]:
+def calculate_center(contour: np.ndarray) -> Tuple[int, int]:
     """
-    Calculate the center from the provided contour's vertices.
+    Calculate the center using image moments
     """
-    pts = contour.reshape(4, 2)
-    cx = int(np.mean(pts[:, 0]))
-    cy = int(np.mean(pts[:, 1]))
-    return (cx, cy), 0
+    # Use image moments for centroid
+    M = cv2.moments(contour)
+    if M["m00"] == 0:
+        return (0, 0)
+    
+    center = (int(M["m10"] / M["m00"]), int(M["m01"] / M["m00"]))
+    return center
+
+def calculate_center_using_warp(warped: np.ndarray, M: np.ndarray) -> Tuple[int, int]:
+    """
+    Calculate a more accurate center:
+    1. Get the center of the warped image.
+    2. Transform it back to the original image coordinates using the inverse warp.
+    """
+    h, w = warped.shape[:2]
+    warped_center = np.array([[[w/2, h/2]]], dtype="float32")
+    M_inv = np.linalg.inv(M)
+    original_center = cv2.perspectiveTransform(warped_center, M_inv)
+    center = (int(original_center[0][0][0]), int(original_center[0][0][1]))
+    return center
+
+def segment_notebook(thresh: np.ndarray) -> Optional[np.ndarray]:
+    """
+    Enhanced segmentation to approximate a quadrilateral (trapezoid) that fits the paper tightly.
+    """
+    # Find contours in the binary mask
+    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    if not contours:
+        return None
+    largest = max(contours, key=cv2.contourArea)
+    if cv2.contourArea(largest) < 1000:
+        return None
+    peri = cv2.arcLength(largest, True)
+    approx = cv2.approxPolyDP(largest, 0.02 * peri, True)
+    if len(approx) != 4:
+        # Try with a larger epsilon
+        approx = cv2.approxPolyDP(largest, 0.04 * peri, True)
+        if len(approx) != 4:
+            # Fallback: use convex hull and then extract 4 extreme points
+            hull = cv2.convexHull(largest)
+            pts = hull.reshape(-1, 2)
+            rect = order_points(pts)
+            return rect.reshape((4, 1, 2))
+    return approx
 
 def draw_bounding_box(image: np.ndarray, contour: np.ndarray) -> np.ndarray:
     """
@@ -120,56 +175,32 @@ def show_debug_window(name: str, image: np.ndarray, wait: bool = False) -> None:
     if wait:
         cv2.waitKey(0)
 
-def segment_notebook(thresh: np.ndarray) -> Optional[np.ndarray]:
-    """
-    Segment the notebook using morphological operations and return a tight
-    rotated bounding box (as a contour) based on the minAreaRect.
-    """
-    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (15, 15))
-    closed = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel)
-    contours, _ = cv2.findContours(closed, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    if contours:
-        largest = max(contours, key=cv2.contourArea)
-        if cv2.contourArea(largest) < 1000:
-            return None
-        rect = cv2.minAreaRect(largest)  # (center, (w, h), angle)
-        box = cv2.boxPoints(rect)       # 4 corners of the rotated bounding box
-        box = np.int0(box)
-        return box.reshape((4, 1, 2))  # return in contour format
-    return None
-
-def process_notebook_image(image: np.ndarray, camera_width: Optional[int] = None, debug: bool = True) -> Tuple[np.ndarray, Tuple[int, int], float]:
+def process_notebook_image(image: np.ndarray, debug: bool = True) -> Tuple[np.ndarray, np.ndarray, Tuple[int, int], float]:
     """
     Runs through the complete pipeline with optional debug visualization using threshold-based segmentation.
     """
-    if debug:
-        show_debug_window("1. Original Image", image)
     
     # Grayscale and threshold
     gray, thresh = preprocess_image(image)
     if debug:
-        show_debug_window("2. Grayscale", gray)
         show_debug_window("3. Threshold", thresh)
     
     # Use threshold segmentation instead of edge-based contour detection
     contour = segment_notebook(thresh)
     if contour is None:
         raise RuntimeError("Notebook segmentation failed")
-    
-    if debug:
-        contour_vis = draw_bounding_box(image.copy(), contour)
-        show_debug_window("4. Segmented Contour", contour_vis)
 
     # Perspective transform using the segmented bounding box contour
-    warped = transform_perspective(image, contour)
+    warped, M, angle = transform_perspective(image, contour)
     if debug:
         show_debug_window("5. Warped Perspective", warped)
     
     # Calculate center using the rotated tight box contour
-    center, angle = calculate_center_and_angle(warped, contour, camera_width)
+    center = calculate_center_using_warp(warped, M)
+    
     if debug:
         result = image.copy()
-        cv2.drawContours(result, [contour], -1, (0, 255, 0), 2)
+        draw_bounding_box(result, contour)
         cv2.circle(result, center, 10, (0, 0, 255), -1)
         cv2.putText(result, f"Center: {center}", (10, 30), 
                     cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
@@ -181,8 +212,7 @@ if __name__ == "__main__":
     try:
         image = capture_image()
         contour, warped, center, angle = process_notebook_image(
-            image, 
-            camera_width=image.shape[1],
+            image,
             debug=True  # Enable debug visualization
         )
         

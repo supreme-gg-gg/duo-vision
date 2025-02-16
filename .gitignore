@@ -228,3 +228,5 @@ public/
 ios/
 
 android/
+
+.DS_Store
