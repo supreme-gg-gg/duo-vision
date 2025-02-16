@@ -175,7 +175,7 @@ def show_debug_window(name: str, image: np.ndarray, wait: bool = False) -> None:
     if wait:
         cv2.waitKey(0)
 
-def process_image(image: np.ndarray, debug: bool = True) -> Tuple[np.ndarray, np.ndarray, Tuple[int, int], float]:
+def process_image(image: np.ndarray, debug: bool = True, show: bool=False) -> Tuple[np.ndarray, np.ndarray, Tuple[int, int], float]:
     """
     Runs through the complete pipeline with optional debug visualization using threshold-based segmentation.
     """
@@ -198,12 +198,13 @@ def process_image(image: np.ndarray, debug: bool = True) -> Tuple[np.ndarray, np
     # Calculate center using the rotated tight box contour
     center = calculate_center_using_warp(warped, M)
 
-    result = image.copy()
-    cv2.drawContours(result, [contour], -1, (0, 255, 0), 2)
-    cv2.circle(result, center, 10, (0, 0, 255), -1)
-    cv2.putText(result, f"Center: {center}", (10, 30),
-                cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-    show_debug_window("Final Result", result, wait=True)
+    if show: 
+        result = image.copy()
+        cv2.drawContours(result, [contour], -1, (0, 255, 0), 2)
+        cv2.circle(result, center, 10, (0, 0, 255), -1)
+        cv2.putText(result, f"Center: {center}", (10, 30),
+                    cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
+        show_debug_window("Final Result", result, wait=True)
 
     return contour, warped, center, angle
 
