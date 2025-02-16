@@ -1,9 +1,9 @@
-import cv2
-import numpy as np
 import random, time
 from bluetooth import read_frame, send_servo_command
-from processing import process_notebook_image
+from processing import process_image
 import serial
+import cv2
+import numpy as np
 
 SERIAL_PORT = "/dev/cu.ESP32_CAM_BT"
 BAUD_RATE = 115200
@@ -23,10 +23,11 @@ def main_pipeline():
         if frame is None:
             print("Failed to decode frame")
             continue
+        cv2.imshow("Input frame", frame)
 
         try:
             # 2. Process frame to get paper center and angle
-            _, _, center, paper_angle = process_notebook_image(frame, debug=False)
+            _, _, center, paper_angle = process_image(frame, debug=False)
             print(f"Processed frame: Center={center}, Paper angle={paper_angle:.2f}")
         except Exception as e:
             print("Processing error:", e)
