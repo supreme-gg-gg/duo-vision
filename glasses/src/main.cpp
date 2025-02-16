@@ -6,12 +6,15 @@
 // Create a BluetoothSerial object
 BluetoothSerial SerialBT;
 
-// Create a Servo object for the servo on GPIO14
-Servo myServo;
-const int servoPin = 14; // Using GPIO14 for the servo
+// Create Servo objects for GPIO14 and GPIO15
+Servo servoGPIO14;
+Servo servoGPIO15;
+const int servoPin1 = 14; // Using GPIO14 for the first servo
+const int servoPin2 = 15; // Using GPIO15 for the second servo
 
-// Global variable to track the last commanded angle
-int currentServoAngle = 90;
+// Global variables to track the last commanded angles
+int currentServoAngle1 = 30;
+int currentServoAngle2 = 120;
 
 // Print the Bluetooth MAC address for reference
 void printBTMacAddress() {
@@ -72,28 +75,60 @@ void initCamera() {
 }
 
 // Process incoming Bluetooth commands
-// Expected command format: "S14:<angle>" e.g., "S14:90"
+// Expected command format: "CMD:<angle1>,<angle2>" e.g., "CMD:90,45"
 void processCommands() {
   if (SerialBT.available()) {
     String command = SerialBT.readStringUntil('\n');
     command.trim();
-    if (command.startsWith("S14:")) {
-      int angle = command.substring(4).toInt();
-      angle = constrain(angle, 0, 180);
-      myServo.write(angle);
-      currentServoAngle = angle;
-      Serial.print("Servo on GPIO14 set to ");
-      Serial.println(angle);
-      // Optionally send a confirmation back to the client
-      SerialBT.print("Servo set to ");
-      SerialBT.println(angle);
-    } else {
-      Serial.print("Unknown command received: ");
-      Serial.println(command);
+    
+    // Only process commands that start with "CMD:"
+    if (!command.startsWith("CMD:")) {
+      // Ignore any data that does not have the proper command header.
+      return;
     }
+    
+    // Remove the "CMD:" prefix.
+    String cmd = command.substring(4);
+    
+    // Look for a comma to separate the two angle values
+    int commaIndex = cmd.indexOf(',');
+    if (commaIndex == -1) {
+      Serial.print("Invalid command format: ");
+      Serial.println(command);
+      return;
+    }
+    
+    // Extract angle values from the command
+    String angle1Str = cmd.substring(0, commaIndex);
+    String angle2Str = cmd.substring(commaIndex + 1);
+    
+    int angle1 = angle1Str.toInt();
+    int angle2 = angle2Str.toInt();
+    
+    // Constrain angles between 0 and 180 degrees
+    angle1 = constrain(angle1, 0, 180);
+    angle2 = constrain(angle2, 0, 180);
+    
+    // Set the servos to the received angles
+    servoGPIO14.write(angle1);
+    servoGPIO15.write(angle2);
+    
+    currentServoAngle1 = angle1;
+    currentServoAngle2 = angle2;
+    
+    Serial.print("Servo on GPIO14 set to ");
+    Serial.print(angle1);
+    Serial.print("°, Servo on GPIO15 set to ");
+    Serial.print(angle2);
+    Serial.println("°");
+    
+    // Optionally send a confirmation back to the client
+    SerialBT.print("GPIO14: ");
+    SerialBT.print(angle1);
+    SerialBT.print("°, GPIO15: ");
+    SerialBT.println(angle2);
   }
 }
-
 
 void setup() {
   Serial.begin(115200);
@@ -101,17 +136,22 @@ void setup() {
   // Initialize the camera
   initCamera();
 
-  // Initialize servo on GPIO14 and set to a default angle (e.g., 90°)
-  myServo.attach(servoPin);
-  myServo.write(currentServoAngle);
+  // Initialize servo on GPIO14 and set to default angle (90°)
+  servoGPIO14.attach(servoPin1);
+  servoGPIO14.write(currentServoAngle1);
   Serial.println("Servo on GPIO14 initialized at 90°");
+
+  // Initialize servo on GPIO15 and set to default angle (90°)
+  servoGPIO15.attach(servoPin2);
+  servoGPIO15.write(currentServoAngle2);
+  Serial.println("Servo on GPIO15 initialized at 90°");
 
   printBTMacAddress();
 
   // Start Bluetooth Serial with the name "ESP32_CAM_BT"
   if (!SerialBT.begin("ESP32_CAM_BT")) {
     Serial.println("An error occurred initializing Bluetooth");
-} else {
+  } else {
     Serial.println("Bluetooth initialized. Waiting for connection...");
   }
 }
@@ -124,7 +164,7 @@ void loop() {
     return;
   }
 
-  // // Process any incoming commands first
+  // Process any incoming commands first
   processCommands();
 
   // Capture a frame from the camera
@@ -144,6 +184,5 @@ void loop() {
   
   esp_camera_fb_return(fb);
 
-  // Serial.printf("Frame sent: %lu bytes\n", frameSize);
   delay(1000); // Delay to allow client time to process frame
 }
