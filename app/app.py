@@ -18,12 +18,7 @@ def main(process_frame, camera_index: int = 0, ) -> None:
     """
 
     # Initialize video capture, controller, socket
-    cap = cv2.VideoCapture(camera_index)
-    if not cap.isOpened():
-        raise RuntimeError("Cannot open camera")
-    socket = init_socket(ESP32_IP, ESP32_PORT)
-    if socket is None:
-        raise RuntimeError("Could not connect to ESP32")
+    cap = cv2.VideoCapture("new_paper.MOV")
     controller = Controller()
 
     try:
@@ -49,7 +44,8 @@ def main(process_frame, camera_index: int = 0, ) -> None:
                 # cv2.imshow("Warped View", warped)
 
                 # Then we send the servo commands
-                send_servo_command(socket, a1, a2)
+                with open("servo_angles.txt", "a") as file:
+                    file.write(f"{a1}, {a2}\n")
                 
             except Exception as e:
                 print(f"Frame processing error: {e}")

@@ -4,25 +4,33 @@ from typing import Tuple, Optional
 
 def preprocess(image: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
     """
-    Color-based preprocessing to detect white/light colored paper
+    Improved preprocessing to detect white/light colored paper.
     """
-    # Convert to HSV color space
-    hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
+    # Optionally apply a blur to reduce noise
+    blurred = cv2.GaussianBlur(image, (5, 5), 0)
     
-    # Define range for white/light colored paper
-    # Low saturation, high value
-    lower = np.array([0, 0, 180])  # Very low saturation, high brightness
-    upper = np.array([180, 30, 255])  # Any hue, low saturation, high brightness
+    # Convert to HSV color space
+    hsv = cv2.cvtColor(blurred, cv2.COLOR_BGR2HSV)
+    
+    # Adjusted HSV range; you might need to tweak these values
+    lower = np.array([0, 0, 150])
+    upper = np.array([180, 60, 255])
     
     # Create mask for white/light regions
     mask = cv2.inRange(hsv, lower, upper)
     
-    # Clean up the mask
-    kernel = np.ones((5,5), np.uint8)
+    # Clean up the mask with morphological operations
+    kernel = np.ones((3, 3), np.uint8)  # experiment with kernel size
     mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel)
     mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
     
+    # For debugging, you can show the HSV channels:
+    # cv2.imshow("Hue", hsv[:,:,0])
+    # cv2.imshow("Saturation", hsv[:,:,1])
+    # cv2.imshow("Value", hsv[:,:,2])
+    
     return cv2.cvtColor(image, cv2.COLOR_BGR2GRAY), mask
+
 
 def detect_edges(image: np.ndarray, low_threshold: int = 50, high_threshold: int = 150) -> np.ndarray:
     """
@@ -35,8 +43,9 @@ def order_points(pts: np.ndarray) -> np.ndarray:
     """
     Order points in the order: top-left, top-right, bottom-right, bottom-left.
     """
-    rect = np.zeros((4, 2), dtype="float32")
+    # Ensure pts is a (4,2) array.
     pts = pts.reshape(4, 2)
+    rect = np.zeros((4, 2), dtype="float32")
     s = pts.sum(axis=1)
     rect[0] = pts[np.argmin(s)]
     rect[2] = pts[np.argmax(s)]
@@ -51,7 +60,9 @@ def transform_perspective(image: np.ndarray, contour: np.ndarray) -> Tuple[np.nd
     Perform perspective transform and return warped image, the transformation matrix, and the rotation angle.
     """
     pts = contour.reshape(-1, 2)
-    if len(pts) != 4:
+    # If the contour doesn't contain exactly 4 points, fall back to a bounding rectangle.
+    if pts.shape[0] != 4:
+        print('falling back: contour has {} points instead of 4'.format(pts.shape[0]))
         x, y, w, h = cv2.boundingRect(contour)
         pts = np.array([[x, y], [x+w, y], [x+w, y+h], [x, y+h]], dtype="float32")
     
@@ -75,7 +86,9 @@ def transform_perspective(image: np.ndarray, contour: np.ndarray) -> Tuple[np.nd
 
     M = cv2.getPerspectiveTransform(rect, dst)
     warped = cv2.warpPerspective(image, M, (maxWidth, maxHeight))
+    warped = cv2.convertScaleAbs(warped) 
     
+    # Calculate rotation angle based on top edge
     angle = np.degrees(np.arctan2(tr[1]-tl[1], tr[0]-tl[0]))
     if abs(angle) > 1:
         center_pt = (maxWidth // 2, maxHeight // 2)
@@ -85,9 +98,8 @@ def transform_perspective(image: np.ndarray, contour: np.ndarray) -> Tuple[np.nd
 
 def calculate_center(contour: np.ndarray) -> Tuple[int, int]:
     """
-    Calculate the center using image moments
+    Calculate the center using image moments.
     """
-    # Use image moments for centroid
     M = cv2.moments(contour)
     if M["m00"] == 0:
         return (0, 0)
@@ -98,8 +110,8 @@ def calculate_center(contour: np.ndarray) -> Tuple[int, int]:
 def calculate_center_using_warp(warped: np.ndarray, M: np.ndarray) -> Tuple[int, int]:
     """
     Calculate a more accurate center:
-    1. Get the center of the warped image.
-    2. Transform it back to the original image coordinates using the inverse warp.
+      1. Get the center of the warped image.
+      2. Transform it back to the original image coordinates using the inverse warp.
     """
     h, w = warped.shape[:2]
     warped_center = np.array([[[w/2, h/2]]], dtype="float32")
@@ -143,12 +155,10 @@ def draw_bounding_box(image: np.ndarray, contour: np.ndarray) -> np.ndarray:
 
 def capture_image(camera_index: int = 0, capture_key: str = "c") -> np.ndarray:
     """
-    Open a window with a live feed from the camera and let the user capture a frame
+    Open a window with a live feed from the camera (or video file) and let the user capture a frame
     by pressing the specified key.
     """
-    cap = cv2.VideoCapture(camera_index)
-    if not cap.isOpened():
-        raise RuntimeError("Can not open camera")
+    cap = cv2.VideoCapture("new_paper.MOV")
 
     while True:
         ret, frame = cap.read()
@@ -170,7 +180,7 @@ def capture_image(camera_index: int = 0, capture_key: str = "c") -> np.ndarray:
     return captured_frame
 
 def show_debug_window(name: str, image: np.ndarray, wait: bool = False) -> None:
-    """Helper function to show debug windows"""
+    """Helper function to show debug windows."""
     cv2.imshow(name, image)
     if wait:
         cv2.waitKey(0)
@@ -179,7 +189,6 @@ def process_image(image: np.ndarray, debug: bool = True, show: bool=False) -> Tu
     """
     Runs through the complete pipeline with optional debug visualization using threshold-based segmentation.
     """
-    
     # Grayscale and threshold
     gray, thresh = preprocess(image)
     if debug:
@@ -189,9 +198,10 @@ def process_image(image: np.ndarray, debug: bool = True, show: bool=False) -> Tu
     contour = segment_notebook(thresh)
     if contour is None:
         raise RuntimeError("Notebook segmentation failed")
-
+    
     # Perspective transform using the segmented bounding box contour
     warped, M, angle = transform_perspective(image, contour)
+
     if debug:
         show_debug_window("5. Warped Perspective", warped)
     
@@ -210,12 +220,10 @@ def process_image(image: np.ndarray, debug: bool = True, show: bool=False) -> Tu
 
 def capture_continuous(camera_index: int = 0, process_frame=None) -> None:
     """
-    Continuously capture and process frames from the camera.
-    process_frame: optional callback function to process each frame
+    Continuously capture and process frames from the camera (or video file).
+    process_frame: optional callback function to process each frame.
     """
-    cap = cv2.VideoCapture(camera_index)
-    if not cap.isOpened():
-        raise RuntimeError("Cannot open camera")
+    cap = cv2.VideoCapture("new_paper.MOV")
 
     try:
         while True:
@@ -246,7 +254,7 @@ def capture_continuous(camera_index: int = 0, process_frame=None) -> None:
 
 if __name__ == "__main__":
     try:
-        # Replace single capture with continuous tracking
+        # Run continuous capture with processing
         capture_continuous(
             process_frame=lambda frame: process_image(frame, debug=False)
         )
